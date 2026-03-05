@@ -1,0 +1,702 @@
+---
+title: "India_Shoe_Sales"
+author: "Eleftherios Tranakos"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+#https://www.kaggle.com/datasets/nayakganesh007/nike-sales-uncleaned-dataset
+```
+
+
+
+```{r Libraries}
+#Install packages and call libraries
+install.packages(c("matrixStats", "pracma", "data.table", "stringr","lubridate","ggplot2"))
+
+library(stringr)
+library(lubridate)
+library(matrixStats)   
+library(pracma)       
+library(data.table)   
+library(dplyr)
+library(scales)
+library(ggplot2)
+```
+
+
+
+```{r}
+#read data
+data <- read.csv("Shoes_Sales.csv")
+```
+
+
+#QUICK DATA INSPECTION
+
+
+```{r}
+#quickly check data (first 10 rows)
+head(data,10)
+```
+Based on the Region Name we understand we have the dataset derived from the India Territory.
+
+```{r}
+#checking our data
+dim(data)
+```
+
+Our dataset has 2500 records/rows and 13 columns/variables/estimates.
+
+
+```{r}
+#Summary Statistics - More info
+summary(data)
+```
+
+```{r}
+#Check NA values
+sum(is.na(data))
+```
+
+
+```{r}
+#Sum NA valus per columns
+colSums(is.na(data))
+```
+
+Columns "Units Sold - Price - Discount Applied" have a lot of missing values
+
+
+```{r}
+#Check Duplicates
+
+sum(duplicated(data))
+
+
+```
+No duplicates have been detected
+
+```{r}
+#Check column data types and values to decide about the necessary data transformations
+glimpse(data)
+
+```
+
+#DATA TRANSFORMATION & CLEANING
+
+First we change the Order_Date col from character to date applying the same date format across all records (standardize data format).
+
+```{r}
+data <- data %>% mutate(
+    Order_Date = na_if(Order_Date, ""),           # replace empty cells with NA
+    Order_Date = str_replace_all(Order_Date, "/", "-"),  # unify separator for all recprds
+    Order_Date = as.Date(parse_date_time(Order_Date,
+                                         orders = c("ymd","dmy"))))
+```
+
+
+Convert chr to factors for better data exploration
+
+```{r}
+for (col in names(data)) {
+  if (is.character(data[[col]])) {
+    data[[col]] <- as.factor(data[[col]])
+  }
+}
+```
+
+
+Check data levels (unique categories per column)
+
+```{r}
+
+data %>%
+  select(where(is.factor)) %>%lapply(levels)
+
+```
+
+
+Size Col seems inconsistent.
+
+1. Replace "" with NA 2.Standardize data - Cluster numbers to distinct size categories
+
+
+```{r}
+# Replacing "" with NA for Size Column
+
+data <- data %>%
+  mutate(
+    Size = str_trim(Size),      # removes spaces like "  "
+    Size = na_if(Size, ""),     # converts empty to NA
+    Size = as.factor(Size)
+  )
+  
+```
+
+Standardize size format
+
+Since we have an Indian Dataset -> US Sizing System
+
+```{r}
+
+data <- data %>%
+  mutate(Size = case_when(
+      Size %in% c("6","7") ~ "S",
+      Size %in% c("8","9") ~ "M",
+      Size %in% c("10","11") ~ "L",
+      Size == "12" ~ "XL",
+      TRUE ~ Size   # keeps M, L, XL unchanged
+    )
+  )
+
+
+```
+
+
+
+```{r}
+#Check counts on each size category
+table(data$Size)
+
+#Size column is now standardized applied with business logic
+```
+
+```{r}
+
+#Check NAs
+
+sum(is.na(data$Size))
+
+#510 NAs in Size Col
+```
+
+Rename MRP (Maximum Retail Price) to Price and Product_Line to Product_Cat (Category) for better understanding for the next calculations
+
+```{r}
+
+data <- data %>%rename(Price = MRP)
+data <- data %>%rename(Product_Cat = Product_Line)
+colnames(data)
+```
+
+Data Validation / Consistency Check
+
+
+As we checked before we have many NA values in the columns: Units_Sold, Price, Discount_Applied and Revenue. We are investigating if we can derive information for some records and fill in the NA with representative values.
+
+```{r}
+
+#We check if the price is fixed / consistened after some groups.
+price_check <- data %>%
+  group_by(Gender_Category, Product_Name, Size) %>%
+  summarise(
+    n_prices = n_distinct(Price),
+    .groups = "drop"
+  )
+
+price_check %>% filter(n_prices > 1)
+
+```
+
+We see that per type of the 3 categories there are more than 1 price. That means that the prices changes.
+
+```{r}
+#Check price range
+data %>%
+  group_by(Gender_Category,Product_Name, Size) %>%
+  summarise(
+    min_price = min(Price, na.rm = TRUE),
+    max_price = max(Price, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  filter(min_price != max_price)
+
+```
+
+The difference between min and max prices is quite high and we understand that this possibly happens due to the fact that we use synthetic data and pricing has been randomly generated. - DATA QUALITY ISSUE
+
+However, we can stil derive some information even under these circumstances.
+Before we do that we round down and up the "Price" + "Profit" Col for easier calculation and better understanding.
+
+```{r}
+
+data$Price <- ifelse(floor(abs(data$Price %% 1) * 10) > 5,ceiling(data$Price), floor(data$Price))
+
+data$Profit <- ifelse(floor(abs(data$Profit %% 1) * 10) > 5,ceiling(data$Profit), floor(data$Profit))
+```
+
+```{r}
+data2 <- data #copy data 
+```
+
+Due to synthetic Data, we see some values From Discount_Applied column to be over >1 (or <0). Of course, such a case is not reasonable and for this reason, we eliminate the corresponding records.
+
+```{r}
+data <- data %>%
+  filter(
+    is.na(Discount_Applied) |
+    between(Discount_Applied, 0, 1)
+  )
+```
+
+
+```{r}
+nrow(data2) - nrow(data) #180 Records were excluded from the dataset 
+```
+
+However the "NA" values of our numeric variables are really tricky.
+
+Below are all the options on how to treat Discount_Applied column:
+
+   A) Assuming 0 → may overstate revenue
+
+   B) Assuming average → introduces bias
+
+   C) Dropping rows → loses data
+
+   D) Forcing 0 → incorrect accounting
+
+Also, on the Units_Sold Col we have values = -1. This can be interpreted as invalid data or as a returned product. In our case we will interpret it as returned product. However, the column of the units is called Units_Sold so we are gonna keep the true number of items that have not been returned back in order to calculate also the reveniew.
+
+
+```{r}
+
+data <- data[is.na(data$Units_Sold) | data$Units_Sold >= 0, ]
+```
+
+Once more, the synthetic data we have make our project harder to interpret and work on but in any case the idea is to see how we handle such cases and the critical thinking behind this.
+
+```{r}
+nrow(data) #2126 records
+```
+
+
+```{r}
+#Get Revenue = Units_Sold * Price
+data <- data %>%
+  mutate(
+    Revenue = ifelse(
+      !is.na(Price) &
+      !is.na(Units_Sold) &
+      !is.na(Discount_Applied),
+      Price * Units_Sold * (1 - Discount_Applied),
+      Revenue
+    )
+  ) %>%
+  mutate(
+    Revenue = round(Revenue, 2),
+    Price = round(Price, 2),
+    Discount_Applied = round(Discount_Applied, 2)
+  )
+
+```
+
+ 
+```{r}
+
+#Re-check NA values in our dataset
+
+colSums(is.na(data))
+
+```
+we still see a lot of NAs and ideally we would like to decrease the number as much as possible.
+
+For that reason, given the synthetic  dataset and the absence of documentation regarding missing discount values, missing Discount_Applied observations are gonna be  treated as 0 (like, no discount applied).
+
+This assumption was made to preserve sample size, ensure mathematical consistency in revenue calculations, and avoid systematic row deletion that could bias downstream analysis.
+
+```{r}
+data$Discount_Applied[is.na(data$Discount_Applied)] <- 0
+```
+
+
+
+```{r}
+#Re-Run
+data <- data %>%
+  mutate(
+    Revenue = ifelse(
+      !is.na(Price) &
+      !is.na(Units_Sold) &
+      !is.na(Discount_Applied),
+      Price * Units_Sold * (1 - Discount_Applied),
+      Revenue
+    )
+  ) %>%
+  mutate(
+    Revenue = round(Revenue, 2),
+    Price = round(Price, 2),
+    Discount_Applied = round(Discount_Applied, 2)
+  )
+
+
+```
+
+
+
+
+```{r}
+#Re-check
+
+colSums(is.na(data))
+
+```
+
+We see  1000 + NA values on Units_Sold and Price.
+
+```{r}
+#Check If the rows that has NA value on Units_Sold col has more than 0 revenue.
+
+data %>%
+  select(Units_Sold, Revenue) %>%
+  filter(is.na(Units_Sold) & Revenue >0 )
+
+# 0 rows with more than 0 revenue
+
+```
+We cannot use these records values from Units_Sold and Revenue Col to compute the missing info.
+
+We will NOT proceed to further Data Transformation Cleaning. However, when we do our corresponding analysis we will exclude the records of the 2 col where their values = NA, so our results are more concrete and interpretable.
+```{r}
+colnames(data)
+```
+
+
+# EXPLORATORY DATA ANALYSIS (EDA)
+
+** 1. Distribution of Product Sales **
+
+
+Identify which product categories generate the most demand.
+Rows with missing Units_Sold are excluded because unit-based metrics require valid sales quantities.
+
+```{r}
+eda_units <- data %>%
+             filter(!is.na(Units_Sold)) %>%
+            group_by(Product_Cat) %>%
+            summarise(
+            total_units = sum(Units_Sold),
+            .groups = "drop"
+            ) %>%
+            arrange(desc(total_units))
+
+
+ggplot(eda_units,
+       aes(x = reorder(Product_Cat, total_units),
+           y = total_units,
+           fill = Product_Cat)) +
+  geom_col() +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Units Sold by Product Category",
+       x = "Product Category",
+       y = "Total Units Sold")
+
+
+```
+
+
+
+As we can see most products were sold within categories "Training" and "Lifestyle" while the least profitable category is "running".
+
+** 2. Revenue Distribution by Region **
+
+Check geographical markets generating the most revenue. Rows with missing Revenue values were excluded since revenue calculations require valid monetary values
+
+```{r}
+eda_revenue_region <- data %>%
+  filter(!is.na(Revenue)) %>%
+  group_by(Region) %>%
+  summarise(
+    total_revenue = sum(Revenue),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(total_revenue))
+
+ggplot(eda_revenue_region,
+       aes(x = reorder(Region, total_revenue),
+           y = total_revenue,
+           fill = Region)) +
+  geom_col() +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Revenue by Region",
+       x = "Region",
+       y = "Total Revenue")
+
+```
+
+
+
+From the plot below, we understand that the leaders Region on shoe shales are "Mumbai" and "Kolkata" while the least sales were appeared in "Hyd" and "Hyderabad".
+
+** 3. Profitability by Product Category and Name **
+
+Find the most profitable product categories  
+
+```{r}
+
+eda_profit_product_cat <- data %>%
+  filter(!is.na(Profit)) %>%
+  group_by(Product_Cat) %>%
+  summarise(
+    total_profit = sum(Profit),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(total_profit))
+
+ggplot(eda_profit_product_cat,
+       aes(x = reorder(Product_Cat, total_profit),
+           y = total_profit,
+           fill = Product_Cat)) +
+  geom_col() +
+  coord_flip() +
+  theme_minimal() +
+  scale_y_continuous(labels = comma) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Profit by Product Category",
+       x = "Product Line",
+       y = "Total Profit")
+```
+As we understand from the above graph the categories that generates the most profit are "Training" and "Basketball" with the former to exceeds the 600.000 unit profit and the latter to approach it significantly, respectively.
+
+Find the most profitable product name  
+
+```{r}
+
+eda_profit_product_name <- data %>%
+  filter(!is.na(Profit)) %>%
+  group_by(Product_Name) %>%
+  summarise(
+    total_profit = sum(Profit),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(total_profit))
+
+ggplot(eda_profit_product_name,
+       aes(x = reorder(Product_Name, total_profit),
+           y = total_profit,
+           fill = Product_Name)) +
+  geom_col() +
+  coord_flip() +
+  theme_minimal() +
+  scale_y_continuous(labels = scales::comma) +
+  scale_fill_discrete() +
+  labs(title = "Profit by Product Category",
+       x = "Product Line",
+       y = "Total Profit")
+```
+
+"Lebron 20" and "SuperRep 20" are the most dominant product names generating more than 175.000 units profit individually.
+
+
+** 4. Time Series Sales Trend **
+
+Spot revenue trends over time.
+
+Rows missing Order_Date or Revenue were excluded because time series analysis requires valid timestamps and revenue values.
+
+For interpretable results we monitor our data per month.
+
+
+```{r}
+
+eda_time <- data %>%
+  filter(!is.na(Order_Date),
+         !is.na(Revenue)) %>%
+  mutate(month = floor_date(Order_Date, "month")) %>%
+  group_by(month) %>%
+  summarise(total_revenue = sum(Revenue), .groups = "drop")
+
+ggplot(eda_time,
+       aes(x = month,
+           y = total_revenue)) +
+  geom_line(color = "red", linewidth = 1) +
+  geom_point(color = "red", size = 3) +
+  geom_text(aes(label = scales::comma(total_revenue)),
+            vjust = -0.5,
+            angle = 45,
+            size = 3) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "1 month") +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  labs(title = "Revenue Trend Over Time",
+       x = "Month",
+       y = "Revenue")
+```
+
+Checking the above graph, revenue increases overall from mid-2023 to late-2024, reaching a peak of about 385k in December 2024. After that, revenue fluctuates in 2025, but it remains generally higher than in the earlier period (specifically in contrast to two years ago same period).
+
+Note: We have excluded the NA records for revenue as a result not to have data for July-Aug. On the next plot, we can check the profit of sales for these 2 months and draw a conclusion.
+
+** 5. Profit over time by quarters **
+
+
+
+```{r}
+eda_profit_time <- data %>%
+  filter(!is.na(Order_Date), !is.na(Profit)) %>%
+  mutate(
+    quarter_date = floor_date(Order_Date, "quarter"),
+    quarter_label = paste0(year(Order_Date), " Q", quarter(Order_Date))
+  ) %>%
+  group_by(quarter_date, quarter_label) %>%
+  summarise(total_profit = sum(Profit), .groups = "drop") %>%
+  arrange(quarter_date)
+
+ggplot(eda_profit_time,
+       aes(x = quarter_date,
+           y = total_profit)) +
+  geom_line(color = "darkgreen", linewidth = 1) +
+  geom_point(color = "darkgreen", size = 3) +
+  geom_text(aes(label = scales::comma(total_profit)),
+            vjust = -0.6,
+            size = 3) +
+  scale_x_date(
+    breaks = eda_profit_time$quarter_date,
+    labels = eda_profit_time$quarter_label
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Quarterly Profit Trend",
+       x = "Quarter",
+       y = "Total Profit")
+```
+
+Based on the above plot, profit remains relatively low and stable from 2023 Q3 to 2024 Q2, staying below 90,000. After that, it rises sharply in 2024 Q3 and peaks in 2024 Q4 (501,575) before fluctuating in 2025 and dropping again by 2025 Q3 (82,900).
+
+Note: Seeing the above graph, it is obvious that profit has been decreased dramatically. So we would expect such a thing to have happened to revenue as well.
+
+
+
+# ADVANCED ANALYSIS
+
+
+** 1. Discount Effectiveness ** 
+
+Multiple Linear Regression Analysis of Revenue Drivers
+
+```{r}
+
+disc_df <- data %>%
+  filter(!is.na(Units_Sold),
+         !is.na(Discount_Applied),
+         !is.na(Price),
+         !is.na(Revenue))
+
+discount_model <- lm(Revenue ~ Discount_Applied + Price + Product_Cat + Sales_Channel,
+                     data = disc_df)
+
+summary(discount_model)
+
+ggplot(disc_df, aes(x = Discount_Applied, y = Revenue)) +
+  geom_point(color = "steelblue", alpha = 0.4, size = 2) +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  theme_minimal() +
+  labs(title = "Discount Applied vs Revenue (with Trend)",
+       x = "Discount Applied",
+       y = "Revenue")
+
+```
+The regression results show that Discount_Applied has a significant negative effect on revenue, while Price has a significant positive effect, meaning higher prices tend to increase revenue while larger discounts reduce it. However, product category and sales channel are not statistically significant predictors, and the model explains about 28% of the variation in revenue.
+
+Note: Garbage in , garbage out. The dataset we have is synthetic and data are not representative. We are aware that results are not good. Once more, we care about the methodology and critical thinking.
+
+** 2. Product Portfolio: Pareto (80/20) Revenue Concentration **
+
+```{r}
+
+pareto <- data %>%
+  filter(!is.na(Revenue)) %>%
+  group_by(Product_Name) %>%
+  summarise(total_revenue = sum(Revenue), .groups = "drop") %>%
+  arrange(desc(total_revenue)) %>%
+  mutate(
+    share = total_revenue / sum(total_revenue),
+    cum_share = cumsum(share),
+    rank = row_number()
+  )
+
+pareto
+
+ggplot(pareto, aes(x = rank, y = cum_share)) +
+  geom_line() +
+  theme_minimal() +
+  labs(title="Pareto Curve: Cumulative Revenue Share by Product Rank",
+       x="Product Rank (highest revenue first)", y="Cumulative revenue share")
+
+```
+```{r}
+n_80 <- min(pareto$rank[pareto$cum_share >= 0.80])
+n_80
+```
+
+From the above graph, we see that in order to exceed the 80% of our sales we need 14 products. Tha means that, a relatively small number of products drive most of the company’s revenue.
+
+
+
+** 3. Market Basket Style Insight (Top combinations) **
+
+```{r}
+combo_perf <- data %>%
+  filter(!is.na(Revenue)) %>%
+  group_by(Gender_Category, Product_Cat, Sales_Channel) %>%
+  summarise(
+    revenue = sum(Revenue),
+    units = sum(Units_Sold, na.rm = TRUE),
+    .groups="drop"
+  ) %>%
+  arrange(desc(revenue))
+
+top_combo <- combo_perf %>% slice_head(n = 15) # top 15 combo 
+
+ggplot(top_combo,
+       aes(x = reorder(paste(Gender_Category, Product_Cat, Sales_Channel, sep=" | "), revenue),
+           y = revenue,
+           fill = revenue)) +
+
+  geom_col(width = 0.7) +
+
+  coord_flip() +
+
+  scale_fill_gradient(
+    low = "#6BAED6",
+    high = "#08306B",
+    labels = comma
+  ) +
+
+  scale_y_continuous(labels = comma) +
+
+  labs(
+    title = "Top 15 Segment–Category–Channel Combinations by Revenue",
+    subtitle = "India Sales Dataset",
+    x = "Customer Segment | Product Category | Sales Channel",
+    y = "Total Revenue",
+    fill = "Revenue"
+  ) +
+
+  theme_minimal(base_size = 13) +
+
+  theme(
+    plot.title = element_text(face="bold", size=16),
+    plot.subtitle = element_text(size=12, color="gray40"),
+    axis.text.y = element_text(size=11),
+    legend.position = "right",
+    panel.grid.minor = element_blank()
+  )
+```
+
+Based on the above barchart, Women – Lifestyle – Retail combination generates the highest revenue, indicating strong demand for women’s lifestyle products in physical stores. Overall, lifestyle products dominate sales, while men’s categories show strong performance particularly through online channels.
+
+
+#SUMMARY
+
+
+This project analyzes a messy and fully synthetic retail shoe sales dataset using R Markdown, focusing on demonstrating a structured analytical workflow despite data quality limitations. The dataset contained several issues, including inconsistent formats, missing values, unrealistic discount values, and synthetic price variations across the same products. After performing extensive data cleaning and transformation—such as standardizing dates, normalizing size categories, filtering invalid observations, and recalculating revenue—the project proceeds with exploratory data analysis (EDA) to examine product demand, regional revenue distribution, profitability by product category and product name, and revenue/profit trends over time. Finally, advanced analytical techniques are applied, including regression analysis to explore the relationship between price, discounts, and revenue, a Pareto (80/20) analysis to identify revenue concentration across products, and a segment–category–channel analysis highlighting the combinations that generate the highest sales. While the dataset is synthetic and results should be interpreted cautiously, the project emphasizes methodology, critical thinking, and practical data analysis techniques for handling imperfect real-world data.
