@@ -10,7 +10,7 @@ Important Note: All projects were developed in RStudio, executed locally, and fu
 
 Below you can find all the projects included on this repository and their corresponding link sources.
 
-     1. India Shoe Shales: https://www.kaggle.com/datasets/nayakganesh007/nike-sales-uncleaned-dataset
+     1. Shoe Sales: https://www.kaggle.com/datasets/nayakganesh007/nike-sales-uncleaned-dataset
      
     This project analyzes a messy and partially synthetic retail shoe sales dataset using R. It demonstrates a full workflow including data cleaning, transformation, exploratory data analysis (EDA), and advanced analytics. The analysis explores product demand, regional revenue distribution, profitability trends, and key sales combinations, while also applying regression and Pareto analysis to extract insights. The focus of the project is on handling imperfect data and demonstrating a structured analytical approach.
 
