@@ -1,5 +1,5 @@
 ---
-title: "India_Shoe_Sales"
+title: "Shoes_Sales"
 author: "Eleftherios Tranakos"
 date: "`r Sys.Date()`"
 output: pdf_document
@@ -7,17 +7,14 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
+fig.crop = FALSE
 options(repos = c(CRAN = "https://cloud.r-project.org"))
-#https://www.kaggle.com/datasets/nayakganesh007/nike-sales-uncleaned-dataset
 ```
 
 
 
-```{r Libraries}
-#Install packages and call libraries
-install.packages(c("matrixStats", "pracma", "data.table", "stringr","lubridate","ggplot2"))
-
+```{r message=FALSE, warning=FALSE, paged.print=FALSE, results='hide'}
+#Call libraries
 library(stringr)
 library(lubridate)
 library(matrixStats)   
@@ -26,6 +23,8 @@ library(data.table)
 library(dplyr)
 library(scales)
 library(ggplot2)
+
+
 ```
 
 
@@ -36,14 +35,14 @@ data <- read.csv("Shoes_Sales.csv")
 ```
 
 
-#QUICK DATA INSPECTION
+# QUICK DATA INSPECTION
 
 
 ```{r}
 #quickly check data (first 10 rows)
 head(data,10)
 ```
-Based on the Region Name we understand we have the dataset derived from the India Territory.
+Based on the Region Name we understand that the dataset is derived from the India Territory.
 
 ```{r}
 #checking our data
@@ -87,7 +86,7 @@ glimpse(data)
 
 ```
 
-#DATA TRANSFORMATION & CLEANING
+# DATA TRANSFORMATION & CLEANING
 
 First we change the Order_Date col from character to date applying the same date format across all records (standardize data format).
 
@@ -533,7 +532,7 @@ ggplot(eda_time,
 
 Checking the above graph, revenue increases overall from mid-2023 to late-2024, reaching a peak of about 385k in December 2024. After that, revenue fluctuates in 2025, but it remains generally higher than in the earlier period (specifically in contrast to two years ago same period).
 
-Note: We have excluded the NA records for revenue as a result not to have data for July-Aug. On the next plot, we can check the profit of sales for these 2 months and draw a conclusion.
+Note: We have excluded the NA records for revenue as a result not to have data for July-Aug. 2025 On the next plot, we can check the profit of sales for these 2 months and draw a conclusion.
 
 ** 5. Profit over time by quarters **
 
@@ -696,7 +695,7 @@ ggplot(top_combo,
 Based on the above barchart, Women – Lifestyle – Retail combination generates the highest revenue, indicating strong demand for women’s lifestyle products in physical stores. Overall, lifestyle products dominate sales, while men’s categories show strong performance particularly through online channels.
 
 
-#SUMMARY
+# SUMMARY
 
 
 This project analyzes a messy and fully synthetic retail shoe sales dataset using R Markdown, focusing on demonstrating a structured analytical workflow despite data quality limitations. The dataset contained several issues, including inconsistent formats, missing values, unrealistic discount values, and synthetic price variations across the same products. After performing extensive data cleaning and transformation—such as standardizing dates, normalizing size categories, filtering invalid observations, and recalculating revenue—the project proceeds with exploratory data analysis (EDA) to examine product demand, regional revenue distribution, profitability by product category and product name, and revenue/profit trends over time. Finally, advanced analytical techniques are applied, including regression analysis to explore the relationship between price, discounts, and revenue, a Pareto (80/20) analysis to identify revenue concentration across products, and a segment–category–channel analysis highlighting the combinations that generate the highest sales. While the dataset is synthetic and results should be interpreted cautiously, the project emphasizes methodology, critical thinking, and practical data analysis techniques for handling imperfect real-world data.
