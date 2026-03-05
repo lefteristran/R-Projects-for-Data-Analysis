@@ -22,4 +22,4 @@ Below you can find all the projects included on this repository and their corres
 
 
 
-NOTE: For more projects for data analysis - cleaning - visualization please ALSO check the repository "R-Projects-Machine-Learning"
+NOTE: For more projects for data analysis - cleaning - visualization please ALSO check the repository "R-Projects_Machine_Learning"
